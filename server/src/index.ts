@@ -1,21 +1,24 @@
 import express, { NextFunction, Request, Response } from "express";
 import path from "path";
-// import helmet from "helmet";
+import helmet from "helmet";
+import { Redis } from "ioredis";
 import { Server as SocketIOServer } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 
 import { ReasonPhrases, StatusCodes } from "http-status-codes";
-import session from "express-session";
-import Redis from "ioredis";
-import { RedisStore } from "connect-redis";
-import http from "http";
+// import session from "express-session";
+// import { RedisStore } from "connect-redis";
+import http, { get } from "http";
 import pg from "pg";
 import jwt from "jsonwebtoken";
+import bodyParser from "body-parser";
 
 import { z, ZodError } from "zod";
 import "express-async-errors";
 import bcrypt from "bcrypt";
 import { v4 as uuid } from "uuid";
+
+import { generateKeyBetween } from "fractional-indexing";
 
 interface TokenPayload {
   userId: string;
@@ -23,19 +26,18 @@ interface TokenPayload {
   createdAt: string;
 }
 
-interface UserSessionData {
-  views: number;
-  userId?: string;
-}
-// https://socket.io/how-to/use-with-express-session#with-typescript
-declare module "express-session" {
-  interface SessionData extends UserSessionData {}
-}
+// interface UserSessionData {
+//   views: number;
+//   userId?: string;
+// }
+// // https://socket.io/how-to/use-with-express-session#with-typescript
+// declare module "express-session" {
+//   interface SessionData extends UserSessionData {}
+// }
 
 declare module "node:http" {
   interface IncomingMessage {
-    session: UserSessionData;
-    payload?: TokenPayload;
+    payload: TokenPayload;
   }
 }
 
@@ -94,20 +96,10 @@ class BadRequestError extends CustomError {
   }
 }
 
-// https://socket.io/docs/v4/redis-adapter/#how-it-works
-const redisPublishClient = new Redis({
-  port: 6379,
-  host: "127.0.0.1", // localhost
-  username: "default",
-  password: "redis_password",
-});
-
-const redisSubscribeClient = redisPublishClient.duplicate();
-
-const redisStore = new RedisStore({
-  client: redisPublishClient,
-  prefix: "poolside:",
-});
+// const redisStore = new RedisStore({
+//   client: redisPubClient,
+//   prefix: "poolside:",
+// });
 
 const { Pool } = pg;
 
@@ -129,13 +121,13 @@ pool.on("error", (err, client) => {
   process.exit(-1);
 });
 
-const sessionMiddleware = session({
-  store: redisStore,
-  resave: false, // required: force lightweight session keep alive (touch)
-  saveUninitialized: false, // recommended: only save session when data exists
-  secret: "session_secret",
-  // cookie: { maxAge: 86400000, secure: true },
-});
+// const sessionMiddleware = session({
+//   store: redisStore,
+//   resave: false, // required: force lightweight session keep alive (touch)
+//   saveUninitialized: false, // recommended: only save session when data exists
+//   secret: "session_secret",
+//   // cookie: { maxAge: 86400000, secure: true },
+// });
 
 const assetPath = path.join(__dirname, "app");
 const staticPath = path.join(__dirname, "static");
@@ -144,8 +136,19 @@ const app = express();
 
 // TODO: Create HTTPS server with self-signed certificate
 const server = http.createServer(app);
+
+// https://socket.io/docs/v4/redis-adapter/#how-it-works
+const redisPubClient = new Redis({
+  port: 6379,
+  host: "127.0.0.1", // localhost
+  username: "default",
+  password: "redis_password",
+});
+
+const redisSubClient = redisPubClient.duplicate();
+
 const io = new SocketIOServer(server, {
-  adapter: createAdapter(redisPublishClient, redisSubscribeClient),
+  adapter: createAdapter(redisPubClient, redisSubClient),
   cors: {
     origin: "*",
   },
@@ -158,13 +161,19 @@ const io = new SocketIOServer(server, {
 app.set("trust proxy", true);
 
 // security configuration
-// app.use(helmet());
+app.use(helmet());
+// app.use((req, res, next) => {
+//   const origin = req.get("origin") || "*";
+//   res.header("Access-Control-Allow-Origin", origin);
+//   res.header("Access-Control-Allow-Headers", "X-Requested-With");
+//   next();
+// });
 
 // Initialize session storage.
-app.use(sessionMiddleware);
+// app.use(sessionMiddleware);
 
 // parse json body
-app.use(express.json());
+app.use(bodyParser.json());
 
 // static assets
 app.use("/v1/assets", express.static(assetPath));
@@ -260,7 +269,21 @@ app.post("/api/v1/users", async (req: Request, res: Response) => {
     throw e;
   }
 
-  res.json(result.rows[0]);
+  const user = result.rows[0];
+  // create jwt token
+  const payload: TokenPayload = {
+    userId: user.id,
+    username: user.username,
+    createdAt: user.created_at,
+  };
+
+  const token = jwt.sign(payload, "JWT_SECRET_KEY", {
+    // issuer: "",
+    // audience: "",
+    expiresIn: 24 * 60 * 60, // 1 day
+  });
+
+  return res.json({ id: user.id, token });
 
   // https://node-postgres.com/features/transactions
   // const client = await pool.connect();
@@ -293,10 +316,10 @@ app.post("/api/v1/users", async (req: Request, res: Response) => {
 // });
 
 const getUserApiParamsSchema = z.object({
-  user_id: z.string().uuid(),
+  userId: z.string().uuid(),
 });
 
-app.get("/api/v1/users/:user_id", async (req: Request, res: Response) => {
+app.get("/api/v1/users/:userId", async (req: Request, res: Response) => {
   let safeParams;
   try {
     safeParams = getUserApiParamsSchema.parse(req.params);
@@ -315,7 +338,7 @@ app.get("/api/v1/users/:user_id", async (req: Request, res: Response) => {
 
   const query = {
     text: "SELECT id, username, created_at FROM users WHERE id = $1",
-    values: [safeParams.user_id],
+    values: [safeParams.userId],
   };
 
   let result;
@@ -367,6 +390,7 @@ app.post("/api/v1/login", async (req: Request, res: Response) => {
   try {
     safeBody = postLoginApiBodySchema.parse(req.body);
   } catch (e) {
+    console.error(req.body, e);
     throw new BadRequestError({ message: "invalid inputs" });
   }
 
@@ -387,9 +411,6 @@ app.post("/api/v1/login", async (req: Request, res: Response) => {
     const user = result.rows[0];
 
     if (bcrypt.compareSync(safeBody.password, user.password_hash)) {
-      // save user in session
-      req.session.userId = user.id;
-
       // create jwt token
       const payload: TokenPayload = {
         userId: user.id,
@@ -420,9 +441,9 @@ app.post("/api/v1/login", async (req: Request, res: Response) => {
 
 const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
   // check session
-  if (req.session?.userId) {
-    return next();
-  }
+  // if (req.session?.userId) {
+  //   return next();
+  // }
 
   if (
     req?.headers?.authorization &&
@@ -437,7 +458,7 @@ const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
       // TODO: implement error class here
       return next(new Error("[401] invalid token"));
     }
-    req.session.userId = payload.userId;
+    // req.session.userId = payload.userId;
     req.payload = payload;
     return next();
   }
@@ -451,7 +472,7 @@ app.get(
   async (req: Request, res: Response) => {
     const query = {
       text: "SELECT * FROM lists WHERE user_id = $1",
-      values: [req.session.userId],
+      values: [req.payload.userId],
     };
 
     let result;
@@ -483,7 +504,7 @@ app.post(
 
     const query = {
       text: "INSERT INTO lists (user_id, name) VALUES ($1, $2) RETURNING *",
-      values: [req.session.userId, safeBody.name],
+      values: [req.payload?.userId, safeBody.name],
     };
 
     let result;
@@ -498,13 +519,85 @@ app.post(
   }
 );
 
-app.get("/", (req: Request, res: Response) => {
-  if (req.session.views) {
-    req.session.views++;
-  } else {
-    req.session.views = 1;
-  }
+const getListByIdApiParamSchema = z.object({
+  listId: z.string().trim().max(255),
+});
 
+app.get(
+  "/api/v1/lists/:listId",
+  isAuthenticated,
+  async (req: Request, res: Response) => {
+    let safeParams;
+    try {
+      safeParams = getListByIdApiParamSchema.parse(req.params);
+    } catch (e) {
+      throw new BadRequestError({ message: "invalid inputs" });
+    }
+
+    const query = {
+      text: "SELECT * FROM lists WHERE id = $1",
+      values: [safeParams.listId],
+    };
+
+    let result;
+    try {
+      result = await pool.query(query);
+    } catch (e) {
+      console.log(e);
+      throw e;
+    }
+
+    if (result?.rowCount === 1) {
+      return res.json(result.rows[0]);
+    }
+
+    return res.status(StatusCodes.NOT_FOUND).send(ReasonPhrases.NOT_FOUND);
+  }
+);
+
+const getListRoomKey = (listId: string) => `list:${listId}`;
+
+const postTodosApiBodySchema = z.object({
+  listId: z.string().uuid(),
+  description: z.string().optional(),
+});
+
+app.post(
+  "/api/v1/todos",
+  isAuthenticated,
+  async (req: Request, res: Response) => {
+    let safeBody;
+    try {
+      safeBody = postTodosApiBodySchema.parse(req.body);
+    } catch (e) {
+      throw new BadRequestError({ message: "invalid inputs" });
+    }
+
+    const todoId = uuid();
+
+    // TODO: logically these 2 db statements need to be run in the single worked serial queue and/or wrapped in a transaction/lock/latch structure
+    // i.e. postgres row-level locking (or another in-memory db which provides guarantees); or node redlock for distributed locks using redis
+    const lastPosition = await dbTodoNextPosition(safeBody.listId);
+    const position = generateKeyBetween(lastPosition, undefined);
+
+    const result = await dbCreateTodo(
+      todoId,
+      safeBody.listId,
+      req.payload.userId,
+      position,
+      safeBody.description
+    );
+
+    io.in(getListRoomKey(safeBody.listId)).emit("create_todo_result", {
+      listId: safeBody.listId,
+      results: result,
+    });
+
+    res.json(result);
+  }
+);
+
+app.get("/", (req: Request, res: Response) => {
   res.status(200).send("OKIE DOO");
 });
 
@@ -512,7 +605,6 @@ app.get("*", (req: Request, res: Response) => res.redirect("/"));
 
 // Error handling
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  // Handled errors
   if (err instanceof CustomError) {
     const { statusCode, errors, logging } = err;
     if (logging) {
@@ -537,7 +629,77 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   return res
     .status(500)
     .send({ errors: [{ message: "Something went wrong" }] });
-}); // <--------- using the errorHandler
+});
+
+// Acceess handlers
+
+const dbGetTodos = async (listId: number) => {
+  const query = {
+    text: "SELECT * FROM todos WHERE list_id = $1",
+    values: [listId],
+  };
+
+  let result;
+  try {
+    result = await pool.query(query);
+  } catch (e) {
+    console.error(e);
+    throw e;
+  }
+
+  return result.rows;
+};
+
+const dbCreateTodo = async (
+  todoId: string,
+  listId: string,
+  userId: string,
+  position: string,
+  description: string = "New todo"
+) => {
+  const query = {
+    text: "INSERT INTO todos(id, list_id, created_by, position, description) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+    values: [todoId, listId, userId, position, description],
+  };
+
+  let result;
+  try {
+    result = await pool.query(query);
+  } catch (e) {
+    console.error(e);
+    throw e;
+  }
+
+  if (result.rowCount !== 1) {
+    // TODO: return an object and let caller handler errror
+    throw new Error("failed to create todo");
+  }
+
+  return result.rows[0];
+};
+
+const dbTodoNextPosition = async (
+  listId: string
+): Promise<string | undefined> => {
+  const query = {
+    text: "SELECT MAX(position) FROM todos WHERE list_id = $1",
+    values: [listId],
+  };
+
+  let result;
+  try {
+    result = await pool.query(query);
+  } catch (e) {
+    console.error(e);
+    throw e;
+  }
+
+  if (result.rowCount !== 1) {
+    return undefined;
+  }
+
+  return result.rows[0].max;
+};
 
 // declare module "socket.io" {
 //   interface Socket {
@@ -551,7 +713,7 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 //   }
 // }
 
-io.engine.use(sessionMiddleware);
+// io.engine.use(sessionMiddleware);
 
 // io.engine.use(async (req, res, next) => {
 //   return next(new Error("invalid token"));
@@ -571,7 +733,6 @@ io.use(async (socket, next) => {
   try {
     payload = jwt.verify(token, "JWT_SECRET_KEY") as TokenPayload;
   } catch (error) {
-    // TODO: implement error class here
     return next(new Error("[401] invalid token"));
   }
 
@@ -620,18 +781,63 @@ io.use(async (socket, next) => {
 // });
 
 io.on("connection", (socket) => {
-  console.log(socket.handshake.auth); // prints { token: "abcd" }
+  // console.log(socket.handshake.auth); // prints { token: "abcd" }
+  console.log("user connected");
 
-  console.log("a user connected");
+  console.log("joining room:", getListRoomKey(socket.handshake.auth.listId));
+  socket.join(getListRoomKey(socket.handshake.auth.listId));
+
+  socket.on("fetch_list", async ({ listId }: { listId: number }) => {
+    // const { userId } = socket.request.payload;
+    const results = await dbGetTodos(listId);
+
+    // only reply on this socket
+    socket.emit("fetch_list_result", { listId, results });
+  });
+
+  socket.on(
+    "create_todo",
+    async ({
+      listId,
+      todoId,
+      position,
+    }: {
+      listId: string;
+      todoId: string;
+      position: string;
+    }) => {
+      const { userId } = socket.request.payload;
+      const result = await dbCreateTodo(todoId, listId, userId, position);
+      console.log("create_todo_result: ", result);
+
+      // send to all
+      io.in(getListRoomKey(listId)).emit("create_todo_result", {
+        listId,
+        results: result,
+      });
+
+      // socket.emit("create_todo_result", {
+      //   listId,
+      //   results: result,
+      // });
+
+      // TODO: currently broadcasting to all clients, need to target specific client
+      // io.sockets.emit("create_todo_result", { results: result });
+      // io.emit("create_todo_result", );
+    }
+  );
+
+  // create_todo
 
   socket.on("chat", (msg) => {
     const payload = socket.request.payload;
 
-    console.log("chat message: ", msg, payload?.user);
-    io.emit("chat", `Server received: ${msg} ${payload?.user}`);
+    console.log("chat message: ", msg, payload.username);
+    io.emit("chat", `Server received: ${msg} ${payload.username}`);
   });
 
   socket.on("disconnect", () => {
+    // HOW
     console.log("user disconnected");
   });
 });

@@ -8,7 +8,7 @@
     useCounter,
     wrappedCounterGlobal,
     createWrappedCounter
-  } from './countstore.svelte.js'
+  } from '../lib/countstore.svelte.js'
 
   const klassCounter = new Counter(7)
 

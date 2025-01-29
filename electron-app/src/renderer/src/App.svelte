@@ -1,48 +1,31 @@
 <script lang="ts">
-  import svelteLogo from './assets/svelte.svg'
-  import viteLogo from './assets/vite.svg'
-
   import { Router, Link, Route } from 'svelte-routing'
-  import Home from './Home.svelte'
-  import About from './About.svelte'
+
+  import { user } from './stores/user.svelte'
+
+  import HomePage from './pages/HomePage.svelte'
+  import AboutPage from './pages/AboutPage.svelte'
+  import LoginPage from './pages/LoginPage.svelte'
+  import ListsPage from './pages/ListsPage.svelte'
+  import ListPage from './pages/ListPage.svelte'
+
+  
+  import Nav from './components/Nav.svelte'
+  import LoginForm from './components/LoginForm.svelte'
 
   let url = $state('/')
 </script>
 
 <main>
-  <div>
-    <a href="https://vite.dev" target="_blank" rel="noreferrer">
-      <img src={viteLogo} class="logo" alt="Vite Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank" rel="noreferrer">
-      <img src={svelteLogo} class="logo svelte" alt="Svelte Logo" />
-    </a>
-  </div>
-  <h1>Vite + Svelte</h1>
-
   <Router {url}>
-    <nav>
-      <Link to="/">Home</Link>
-      <Link to="/about">About</Link>
-    </nav>
+    <Nav />
+
     <div>
-      <Route path="/"><Home /></Route>
-      <Route path="/about" component={About} />
+      <Route path="/lists/:id" let:params>
+        <ListPage id={params.id} />
+      </Route>
+      <Route path="/lists" component={ListsPage} />
+      <Route path="/" component={LoginPage} />
     </div>
   </Router>
 </main>
-
-<style>
-  .logo {
-    height: 6em;
-    padding: 1.5em;
-    will-change: filter;
-    transition: filter 300ms;
-  }
-  .logo:hover {
-    filter: drop-shadow(0 0 2em #646cffaa);
-  }
-  .logo.svelte:hover {
-    filter: drop-shadow(0 0 2em #ff3e00aa);
-  }
-</style>
