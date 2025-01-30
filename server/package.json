@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "dev2": "tsx src/index.ts",
     "dev": "tsx watch --clear-screen=false src/index.ts",
     "dev:debug": "tsx --inspect-brk --clear-screen=false src/index.ts",
     "migrate": "DATABASE_URL='postgres://postgres_user:postgres_password@localhost:5432/postgres_db' node-pg-migrate"
@@ -13,17 +14,24 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@types/express-session": "^1.18.1",
-    "connect-redis": "8.0.1",
+    "bcrypt": "5.1.1",
+    "body-parser": "1.20.3",
+    "bullmq": "5.39.0",
     "express": "4.21.2",
-    "express-session": "1.18.1",
+    "express-async-errors": "3.1.1",
+    "fractional-indexing": "3.2.0",
     "helmet": "8.0.0",
+    "http-status-codes": "2.3.0",
     "ioredis": "5.4.2",
     "jsonwebtoken": "9.0.2",
     "node-pg-migrate": "7.9.0",
     "pg": "8.13.1",
     "socket.io": "4.8.1",
-    "ws": "8.18.0"
+    "tsx": "4.19.2",
+    "typescript": "5.7.3",
+    "uuid": "11.0.5",
+    "ws": "8.18.0",
+    "zod": "3.24.1"
   },
   "devDependencies": {
     "@socket.io/redis-adapter": "8.3.0",
@@ -32,17 +40,6 @@
     "@types/jsonwebtoken": "9.0.8",
     "@types/node": "22.10.10",
     "@types/pg": "8.11.11",
-    "@types/ws": "8.5.14",
-    "bcrypt": "^5.1.1",
-    "body-parser": "1.20.3",
-    "express-async-errors": "^3.1.1",
-    "fractional-indexing": "3.2.0",
-    "http-status-codes": "^2.3.0",
-    "nodemon": "3.1.9",
-    "ts-node": "10.9.2",
-    "tsx": "4.19.2",
-    "typescript": "5.7.3",
-    "uuid": "11.0.5",
-    "zod": "3.24.1"
+    "@types/ws": "8.5.14"
   }
 }

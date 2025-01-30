@@ -1,7 +1,7 @@
 import express, { NextFunction, Request, Response } from "express";
 import path from "path";
 import helmet from "helmet";
-import { Redis } from "ioredis";
+import { Redis, RedisOptions } from "ioredis";
 import { Server as SocketIOServer } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 
@@ -20,20 +20,20 @@ import { v4 as uuid } from "uuid";
 
 import { generateKeyBetween } from "fractional-indexing";
 
+import { Queue, Worker } from "bullmq";
+
+const redisOpts: RedisOptions = {
+  port: 6379,
+  host: "127.0.0.1", // localhost
+  username: "default",
+  password: "redis_password",
+};
+
 interface TokenPayload {
   userId: string;
   username: string;
   createdAt: string;
 }
-
-// interface UserSessionData {
-//   views: number;
-//   userId?: string;
-// }
-// // https://socket.io/how-to/use-with-express-session#with-typescript
-// declare module "express-session" {
-//   interface SessionData extends UserSessionData {}
-// }
 
 declare module "node:http" {
   interface IncomingMessage {
@@ -138,13 +138,7 @@ const app = express();
 const server = http.createServer(app);
 
 // https://socket.io/docs/v4/redis-adapter/#how-it-works
-const redisPubClient = new Redis({
-  port: 6379,
-  host: "127.0.0.1", // localhost
-  username: "default",
-  password: "redis_password",
-});
-
+const redisPubClient = new Redis(redisOpts);
 const redisSubClient = redisPubClient.duplicate();
 
 const io = new SocketIOServer(server, {
@@ -284,25 +278,6 @@ app.post("/api/v1/users", async (req: Request, res: Response) => {
   });
 
   return res.json({ id: user.id, token });
-
-  // https://node-postgres.com/features/transactions
-  // const client = await pool.connect();
-  // try {
-  //   await client.query("BEGIN");
-  //   const queryText = "INSERT INTO users(name) VALUES($1) RETURNING id";
-  //   const res = await client.query(queryText, ["brianc"]);
-
-  //   const insertPhotoText =
-  //     "INSERT INTO photos(user_id, photo_url) VALUES ($1, $2)";
-  //   const insertPhotoValues = [res.rows[0].id, "s3.bucket.foo"];
-  //   await client.query(insertPhotoText, insertPhotoValues);
-  //   await client.query("COMMIT");
-  // } catch (e) {
-  //   await client.query("ROLLBACK");
-  //   throw e;
-  // } finally {
-  //   client.release();
-  // }
 });
 
 // const getUserApiParamsSchema = z.object({
@@ -360,25 +335,17 @@ app.get("/api/v1/welcome", (req: Request, res: Response) => {
   const socketId = req.query.sid || "";
   if (socketId) {
     // target a single connection
-    io.in(socketId as string).emit("chat", "welcome back!!");
+    io.to(socketId as string).emit("chat", "welcome back!!");
   } else {
+    // https://socket.io/docs/v4/namespaces/#main-namespace
+    // io.sockets, it's simply an alias for io.of("/")
+    //
     // emit to everyone
     io.sockets.emit("chat", "welcome welcome welcome");
-    // is equivalent to
-    // io.of("/").emit("hi", "everyone");
   }
 
   res.send("OK");
 });
-
-// delete room endpoint
-// make all Socket instances leave the "room1" room
-// https://socket.io/docs/v4/server-api/#serversocketsleaverooms
-// io.socketsLeave("room1");
-
-// https://socket.io/docs/v4/server-api/#serverinroom
-// disconnect all clients in the "room-101" room
-// io.in("room-101").disconnectSockets();
 
 const postLoginApiBodySchema = z.object({
   username: z.string().trim().min(3).max(255),
@@ -437,14 +404,7 @@ app.post("/api/v1/login", async (req: Request, res: Response) => {
   return res.status(StatusCodes.NOT_FOUND).send(ReasonPhrases.NOT_FOUND);
 });
 
-// My lists
-
 const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
-  // check session
-  // if (req.session?.userId) {
-  //   return next();
-  // }
-
   if (
     req?.headers?.authorization &&
     req?.headers?.authorization?.toLowerCase().startsWith("bearer ")
@@ -576,24 +536,71 @@ app.post(
     const todoId = uuid();
 
     // TODO: logically these 2 db statements need to be run in the single worked serial queue and/or wrapped in a transaction/lock/latch structure
-    // i.e. postgres row-level locking (or another in-memory db which provides guarantees); or node redlock for distributed locks using redis
-    const lastPosition = await dbTodoNextPosition(safeBody.listId);
-    const position = generateKeyBetween(lastPosition, undefined);
+    // i.e. postgres row-level locking (or another in-memory db which provides guarantees); or node redlock for distributed locks using redis; or isolation level
+    // https://node-postgres.com/features/transactions
 
-    const result = await dbCreateTodo(
-      todoId,
-      safeBody.listId,
-      req.payload.userId,
-      position,
-      safeBody.description
-    );
+    // https://www.postgresql.org/docs/current/transaction-iso.html#XACT-SERIALIZABLE
 
-    io.in(getListRoomKey(safeBody.listId)).emit("create_todo_result", {
-      listId: safeBody.listId,
-      results: result,
-    });
+    // https://medium.com/@darora8/transaction-isolation-in-postgres-ec4d34a65462
 
-    res.json(result);
+    // https://www.postgresql.org/docs/current/explicit-locking.html#EXPLICIT-LOCKING
+
+    // const client = await pool.connect();
+    // try {
+    //   await client.query("BEGIN");
+    //   const queryText = "INSERT INTO users(name) VALUES($1) RETURNING id";
+    //   const res = await client.query(queryText, ["brianc"]);
+
+    //   const insertPhotoText =
+    //     "INSERT INTO photos(user_id, photo_url) VALUES ($1, $2)";
+    //   const insertPhotoValues = [res.rows[0].id, "s3.bucket.foo"];
+    //   await client.query(insertPhotoText, insertPhotoValues);
+
+    //   await client.query("COMMIT");
+    // } catch (e) {
+    //   await client.query("ROLLBACK");
+    //   throw e;
+    // } finally {
+    //   client.release();
+    // }
+
+    const testWorker = true;
+    if (testWorker) {
+      // doing this approach with ab (apache bench) - shows NO duplicates when queried, so the queue is stable
+      // SELECT count(position) as dups FROM todos WHERE list_id='b46f72f7-6bbd-46f8-907f-18f25f58a6be' GROUP BY position HAVING count(position) > 1;
+
+      await processor.addJob(safeBody.listId, uuid(), "create_todo", {
+        todoId,
+        listId: safeBody.listId,
+        userId: req.payload.userId,
+        // position: "a1",
+        description: safeBody.description,
+      });
+
+      // TODO: this doesn't return anything useful right now. Just ques for background processing
+      res.send("ok");
+    } else {
+      // doing this approach with ab (apache bench) - shows duplicates when queried
+      // SELECT count(position) as dups FROM todos WHERE list_id='b46f72f7-6bbd-46f8-907f-18f25f58a6be' GROUP BY position HAVING count(position) > 1;
+
+      const lastPosition = await dbTodoNextPosition(safeBody.listId);
+      const position = generateKeyBetween(lastPosition, undefined);
+
+      const result = await dbCreateTodo(
+        todoId,
+        safeBody.listId,
+        req.payload.userId,
+        position,
+        safeBody.description
+      );
+
+      io.to(getListRoomKey(safeBody.listId)).emit("create_todo_result", {
+        listId: safeBody.listId,
+        results: result,
+      });
+
+      res.json(result);
+    }
   }
 );
 
@@ -681,8 +688,11 @@ const dbCreateTodo = async (
 const dbTodoNextPosition = async (
   listId: string
 ): Promise<string | undefined> => {
+  // NOTE: We need to use COLLATE "POSIX" to get the correct ordering for fractional indexing
+  // https://www.postgresql.org/docs/13/collation.html
+  // SELECT 'aA' < 'aa' COLLATE "POSIX"; -- true
   const query = {
-    text: "SELECT MAX(position) FROM todos WHERE list_id = $1",
+    text: 'SELECT MAX((position COLLATE "POSIX")) FROM todos WHERE list_id = $1',
     values: [listId],
   };
 
@@ -700,24 +710,6 @@ const dbTodoNextPosition = async (
 
   return result.rows[0].max;
 };
-
-// declare module "socket.io" {
-//   interface Socket {
-//     session: Session;
-//   }
-// }
-
-// declare module "socket.io" {
-//   interface Socket {
-//     request: SessionIncomingMessage;
-//   }
-// }
-
-// io.engine.use(sessionMiddleware);
-
-// io.engine.use(async (req, res, next) => {
-//   return next(new Error("invalid token"));
-// });
 
 io.use(async (socket, next) => {
   if (socket.connected) {
@@ -740,53 +732,24 @@ io.use(async (socket, next) => {
   return next();
 });
 
-// io.use((socket, next) => {
-//   if (isValid(socket.request)) {
-//     next();
-//   } else {
-//     next(new Error("invalid"));
-//   }
-// });
-
-// io.engine.use((req, res, next) => {
-//   const isHandshake = req._query.sid === undefined;
-//   if (!isHandshake) {
-//     return next();
-//   }
-
-//   const header = req.headers["authorization"];
-
-//   if (!header) {
-//     return next(new Error("no token"));
-//   }
-
-//   if (!header.startsWith("bearer ")) {
-//     return next(new Error("invalid token"));
-//   }
-
-//   const token = header.substring(7); // string "baearer "
-
-//   let payload;
-//   try {
-//     payload = jwt.verify(token, "JWT_SECRET_KEY");
-//   } catch (error) {
-//     console.log(error);
-//   }
-
-//   if (!payload) {
-//     return next(new Error("invalid token"));
-//   }
-//   req.user = payload;
-//   next();
-// });
-
-io.on("connection", (socket) => {
+io.on("connection", async (socket) => {
   // console.log(socket.handshake.auth); // prints { token: "abcd" }
-  console.log("user connected");
+  console.log("user connection");
 
-  console.log("joining room:", getListRoomKey(socket.handshake.auth.listId));
+  const roomKey = getListRoomKey(socket.handshake.auth.listId);
+
+  // redis.has(key)
+
+  // const hasRoom = io.sockets.rooms.has(roomKey);
+
+  // if (!hasRoom) {
+  //   console.log(">>> need to create a new room!!! worker");
+  // }
+
+  console.log("joining room:", roomKey);
   socket.join(getListRoomKey(socket.handshake.auth.listId));
 
+  // const checkKey = await redisPubClient.get("mykey");
   socket.on("fetch_list", async ({ listId }: { listId: number }) => {
     // const { userId } = socket.request.payload;
     const results = await dbGetTodos(listId);
@@ -807,13 +770,12 @@ io.on("connection", (socket) => {
       position: string;
     }) => {
       const { userId } = socket.request.payload;
-      const result = await dbCreateTodo(todoId, listId, userId, position);
-      console.log("create_todo_result: ", result);
 
-      // send to all
-      io.in(getListRoomKey(listId)).emit("create_todo_result", {
+      await processor.addJob(listId, uuid(), "create_todo", {
+        todoId,
         listId,
-        results: result,
+        userId,
+        position,
       });
 
       // socket.emit("create_todo_result", {
@@ -842,11 +804,76 @@ io.on("connection", (socket) => {
   });
 });
 
-//
-// Start the server.
-//
-server.listen(3000, function () {
-  console.log("Listening on http://localhost:3000");
+const redisConnection = new Redis({ ...redisOpts, maxRetriesPerRequest: null });
+
+const handleJob = async (job: any) => {
+  console.log("job: ", job.name, job.id, job.data);
+
+  const { todoId, listId, userId, description } = job.data;
+
+  let position = undefined; // job.data.position;
+  if (!position) {
+    const lastPosition = await dbTodoNextPosition(listId);
+    console.log("lastPosition>", lastPosition);
+    position = generateKeyBetween(lastPosition, undefined);
+    console.log("pos>", lastPosition, position);
+  }
+
+  const result = await dbCreateTodo(
+    todoId,
+    listId,
+    userId,
+    position,
+    description
+  );
+  console.log("create_todo_result: ", result);
+
+  io.to(getListRoomKey(listId)).emit("create_todo_result", {
+    listId,
+    results: result,
+  });
+};
+
+class Processor {
+  queues: { [key: string]: Queue } = {};
+  workers: { [key: string]: Worker } = {};
+
+  constructor() {}
+
+  async addQueue(listId: string) {
+    if (listId in this.queues) {
+      return;
+    }
+
+    const queue = new Queue(listId, { connection: redisConnection });
+    await queue.setGlobalConcurrency(1);
+    this.queues[listId] = queue;
+  }
+
+  async addWorker(listId: string) {
+    if (listId in this.workers) {
+      return;
+    }
+
+    this.workers[listId] = new Worker(listId, handleJob, {
+      connection: redisConnection,
+    });
+  }
+
+  // https://docs.bullmq.io/guide/jobs/job-ids
+  // Custom job ids must not contain the : separator as it will be translated in 2 different values, since we are also following Redis naming convention. So if you need to add a separator, use a different value, for example -, _.
+  async addJob(listId: string, jobId: string, jobName: string, job: any) {
+    await this.addQueue(listId);
+    await this.addWorker(listId);
+    await this.queues[listId]?.add(jobName, job, { jobId });
+  }
+}
+
+const processor = new Processor();
+
+const PORT = 3000;
+server.listen(PORT, function () {
+  console.log(`Listening on http://localhost:${PORT}`);
 });
 
 process.on("SIGINT", async () => {

@@ -24,6 +24,7 @@ interface Todo {
 
 export class ListWebSocket {
   #socket: Socket | null = null
+  port: number = 3000
 
   listId = $state('')
   todos = $state<Todo[]>([])
@@ -35,12 +36,14 @@ export class ListWebSocket {
   isConnected = $state(false)
   isFetching = $state(false)
 
-  constructor() {}
+  constructor(port = 3000) {
+    this.port = port
+  }
 
   connect = (token: string, listId: string) => {
     this.listId = listId
 
-    this.#socket = io('ws://localhost:3000', {
+    this.#socket = io(`ws://localhost:${this.port}`, {
       transports: ['websocket'],
       auth: {
         token: token,

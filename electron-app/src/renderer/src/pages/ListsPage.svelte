@@ -10,7 +10,6 @@
     Success,
     Error
   }
-
   let lists = $state()
   let loadState = $state(LoadState.Loading)
 
