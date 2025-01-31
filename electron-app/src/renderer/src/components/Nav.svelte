@@ -11,8 +11,8 @@
   }
 
   const navs = [
-    { id: 1, name: 'Lists', to: '/lists', icon: List, isAuth: true },
-    { id: 2, name: 'Logout', to: '/logout', icon: LogOut, isAuth: true, click: logout },
+    { id: 1, name: 'Your lists', to: '/lists', icon: List, isAuth: true },
+    { id: 2, name: 'Log out', to: '/logout', icon: LogOut, isAuth: true, click: logout },
     { id: 3, name: 'Login', to: '/login', icon: LogIn, isAuth: false },
     { id: 4, name: 'Register', to: '/register', icon: UserPlus, isAuth: false }
   ]

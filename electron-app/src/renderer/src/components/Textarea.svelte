@@ -1,6 +1,6 @@
 <script lang="ts">
 
-  let { value, handleSave } = $props()
+  let { value, handleStart, handleSave } = $props()
 
   let isHovering = $state(false)
   let isEditing = $state(false)
@@ -20,7 +20,7 @@
     //   text = $state.snapshot(value)
     // }
     isEditing = true
-    
+    handleStart()
   }
 
 
@@ -68,12 +68,13 @@
   [contenteditable] {
     white-space: pre-line;
     border: 1px solid transparent;
+    font-size: 1.1rem
   }
   .original {
     pointer-events: none;
   }
   .shadow {
-    border-color: #eee;
+    border-color: #7885a1;
     border-radius: 4px;
 
   }

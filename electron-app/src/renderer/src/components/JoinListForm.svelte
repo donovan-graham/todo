@@ -33,8 +33,10 @@
           throw new Error(`Response status: ${response.status}`)
         }
 
+        const result = await response.json()
+
         form.reset()
-        navigate(`/lists/${data.listId}`)
+        navigate(`/lists/${data.listId}`, { state: result })
       } catch (error) {
         console.error('fetch >>', error.message)
       } finally {

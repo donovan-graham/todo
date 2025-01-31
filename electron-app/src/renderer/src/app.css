@@ -110,13 +110,13 @@ button {
   transition: border-color 0.25s;
 }
 
-button:hover {
-  border-color: #646cff;
-}
+/* button:hover {
+  border-color: #7c4e53;
+} */
 
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: none; /*  4px auto -webkit-focus-ring-color; */
 }
 
 nav {
@@ -169,4 +169,16 @@ form.inline {
 }
 form.inline .form-button {
   margin-top: 0;
+}
+
+h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+hr {
+  border: none;
+  border-top: 1px solid #454955;
+  margin: 1rem 0;
 }

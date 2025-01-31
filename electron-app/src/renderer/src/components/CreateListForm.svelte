@@ -6,6 +6,7 @@
   import { navigate } from 'svelte-routing'
   import { Plus, Eraser } from 'lucide-svelte'
 
+
   let { lists = $bindable() } = $props()
 
   const schema = z.object({
@@ -41,7 +42,7 @@
         const result = await response.json()
         lists.push(result)
         form.reset()
-        navigate(`/lists/${result.id}`)
+        navigate(`/lists/${result.id}`, { state: result })
       } catch (error) {
         console.error('fetch >>', error.message)
       } finally {

@@ -42,5 +42,5 @@
 </div>
 
 <footer>
-  Made by <a href="mailto:donovan@platform7.com">Donovan Graham</a>
+  Made by &nbsp;<a href="mailto:donovan@platform7.com">Donovan Graham</a>
 </footer>

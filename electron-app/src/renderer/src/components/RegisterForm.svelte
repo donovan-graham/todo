@@ -5,6 +5,9 @@
   import { user } from '../stores/user.svelte'
   import { navigate } from 'svelte-routing'
 
+
+  import { UserPlus } from 'lucide-svelte'
+
   const schema = z.object({
     username: z.string().trim().min(3).max(255),
     password: z.string().trim().min(3).max(255)
@@ -56,7 +59,7 @@
 </script>
 
 <form use:enhance id="register-form">
-  <h2>Register</h2>
+  <h2><UserPlus />Register</h2>
 
   <label for="register-username">Username</label>
   <fieldset>

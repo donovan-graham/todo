@@ -5,6 +5,9 @@
   import { user } from '../stores/user.svelte'
   import { navigate } from 'svelte-routing'
 
+  import {  LogIn } from 'lucide-svelte'
+
+
   const schema = z.object({
     username: z.string().trim().min(3).max(255),
     password: z.string().trim().min(3).max(255)
@@ -52,7 +55,7 @@
 </script>
 
 <form use:enhance id="login-form">
-  <h2>Login</h2>
+  <h2><LogIn />Login</h2>
 
   <label for="login-username">Username</label>
   <fieldset>
