@@ -4,12 +4,16 @@
     import SimpleForm from '../components/SimpleForm.svelte';
 </script>
 
-
-
-<div>
-    <LoginForm />
-    <hr />    
+<div class="layout">
+    <LoginForm /> 
     <RegisterForm />
-    <hr />    
-    <SimpleForm />
+    <!-- <hr />    
+    <SimpleForm /> -->
 </div>
+
+<style>
+ .layout {
+    display: flex;
+    flex-direction: row;
+ }
+</style>

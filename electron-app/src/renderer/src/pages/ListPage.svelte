@@ -41,7 +41,7 @@
 </script>
 
 &laquo; <Link to="/lists">back to lists</Link>
-<h1>List: {id} {name}</h1>
+<h2>List: {id} {name}</h2>
 
 <!-- <p>The time is {currentDate.getHours()}:{currentDate.getMinutes()}:{currentDate.getSeconds()}</p> -->
 

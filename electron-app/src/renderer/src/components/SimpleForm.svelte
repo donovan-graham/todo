@@ -34,18 +34,6 @@
 
 <div style="font-size: 15px;font-family: Verdana, Geneva, Tahoma, sans-serif;margin: 20px 10px;">
   <form use:enhance>
-    svelte-simple-form <pre
-      style="font-size: 10px;max-height: 300px;overflow:auto;background-color: #f5f5f5;padding:10px;">{JSON.stringify(
-        form,
-        null,
-        2
-      )}</pre>
-    <br /><br />
-    <hr />
-    <br /><br />
-    Form
-    <br />
-    <br />
     <div>
       <input type="text" bind:value={form.data.name} />
       {#if form.errors.name?.length}

@@ -52,6 +52,7 @@
 <div onmouseenter={handleEnter} onmouseleave={handleExit}>
   {#if isHovering || isEditing}
     <div
+      class="shadow"
       role="textbox"
       contenteditable="true"
       onfocus={handleClick}
@@ -65,12 +66,15 @@
 
 <style>
   [contenteditable] {
-    padding: 0.5em;
-    border: 1px solid #eee;
-    border-radius: 4px;
     white-space: pre-line;
+    border: 1px solid transparent;
   }
   .original {
     pointer-events: none;
+  }
+  .shadow {
+    border-color: #eee;
+    border-radius: 4px;
+
   }
 </style>

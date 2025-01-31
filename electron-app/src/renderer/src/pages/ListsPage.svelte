@@ -4,6 +4,9 @@
   import CreateListForm from '../components/CreateListForm.svelte'
   import JoinListForm from '../components/JoinListForm.svelte'
 
+  import { ListRestart, Copy } from 'lucide-svelte'
+
+
   enum LoadState {
     Idle,
     Loading,
@@ -43,23 +46,22 @@
   })
 </script>
 
-<h1>Lists</h1>
+<h2>Lists   <button id="refresh" data-testid="refresh" onclick={() => load()}  alt="Refresh lists"><ListRestart /></button></h2>
 
 {#if loadState === LoadState.Success}
   {#each lists as list (list.id)}
     <div>
       <Link to="/lists/{list.id}">{list.name || 'Untitled'}</Link>
-      <button onclick={() => navigator.clipboard.writeText(list.id)}>Clip</button>
+      <button onclick={() => navigator.clipboard.writeText(list.id)} alt="Copy to clipboard"><Copy /></button>
     </div>
   {/each}
-  <button id="refresh" data-testid="refresh" onclick={() => load()}>Refresh</button>
 
   <CreateListForm bind:lists />
 
   <JoinListForm />
 {:else if loadState === LoadState.Error}
   <p>Error</p>
-  <button id="refresh" data-testid="refresh" onclick={() => load()}>Refresh</button>
+  <button id="refresh" data-testid="refresh" onclick={() => load()}  alt="Refresh lists"><ListRestart /></button>
 {:else}
   <p>Loading...</p>
 {/if}
