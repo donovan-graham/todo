@@ -13,6 +13,8 @@ exports.shorthands = undefined;
 exports.up = (pgm) => {
   pgm.createExtension("uuid-ossp", { ifNotExists: true });
 
+  pgm.createType("status_type", ["todo", "ongoing", "done"]);
+
   pgm.createTable(
     "users",
     {
@@ -80,7 +82,7 @@ exports.up = (pgm) => {
         references: "lists", // lists.id
       },
       description: { type: "varchar(255)" },
-      status: { type: "smallint", notNull: true, default: 1 },
+      status: { type: "status_type", notNull: true, default: "todo" },
       position: { type: "varchar(255)", notNull: true },
       created_at: {
         type: "timestamp",

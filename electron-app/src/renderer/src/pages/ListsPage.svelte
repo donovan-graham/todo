@@ -48,7 +48,8 @@
 {#if loadState === LoadState.Success}
   {#each lists as list (list.id)}
     <div>
-      <Link to="/lists/{list.id}">{list.id}</Link>: {list.name || 'Untitled'}: {list.created_at}
+      <Link to="/lists/{list.id}">{list.name || 'Untitled'}</Link>
+      <button onclick={() => navigator.clipboard.writeText(list.id)}>Clip</button>
     </div>
   {/each}
   <button id="refresh" data-testid="refresh" onclick={() => load()}>Refresh</button>

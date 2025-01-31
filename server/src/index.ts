@@ -6,9 +6,7 @@ import { Server as SocketIOServer } from "socket.io";
 import { createAdapter } from "@socket.io/redis-adapter";
 
 import { ReasonPhrases, StatusCodes } from "http-status-codes";
-// import session from "express-session";
-// import { RedisStore } from "connect-redis";
-import http, { get } from "http";
+import http from "http";
 import pg from "pg";
 import jwt from "jsonwebtoken";
 import bodyParser from "body-parser";
@@ -657,6 +655,12 @@ const dbGetTodos = async (listId: number) => {
   return result.rows;
 };
 
+enum TODO_STATUS {
+  Todo = "todo",
+  OnGoing = "ongoing",
+  Done = "done",
+}
+
 const dbCreateTodo = async (
   todoId: string,
   listId: string,
@@ -709,6 +713,83 @@ const dbTodoNextPosition = async (
   }
 
   return result.rows[0].max;
+};
+
+const dbTodoUpdateDescription = async (
+  todoId: string,
+  listId: string,
+  description: string
+): Promise<string | undefined> => {
+  const query = {
+    text: "UPDATE todos SET description = $1, updated_at = DEFAULT WHERE id = $2 AND list_id = $3 RETURNING updated_at",
+    values: [description, todoId, listId],
+  };
+
+  let result;
+  try {
+    result = await pool.query(query);
+  } catch (e) {
+    console.error(e);
+    throw e;
+  }
+
+  if (result.rowCount === 1) {
+    return result.rows[0].updated_at;
+  }
+
+  return undefined;
+};
+
+const dbTodoTransitionStatus = async (
+  todoId: string,
+  listId: string,
+  fromStatus: TODO_STATUS,
+  toStatus: TODO_STATUS
+): Promise<string | undefined> => {
+  const query = {
+    text: "UPDATE todos SET status = $1, updated_at = DEFAULT WHERE id = $2 AND list_id = $3 AND status = $4 RETURNING updated_at",
+    values: [toStatus, todoId, listId, fromStatus],
+  };
+
+  let result;
+  try {
+    result = await pool.query(query);
+  } catch (e) {
+    console.error(e);
+    throw e;
+  }
+
+  if (result.rowCount === 1) {
+    return result.rows[0].updated_at;
+  }
+
+  return undefined;
+};
+
+const dbTodoUpdatePosition = async (
+  todoId: string,
+  listId: string,
+  position: string
+): Promise<string | undefined> => {
+  const query = {
+    text: "UPDATE todos SET position = $1, updated_at = DEFAULT WHERE id = $2 AND list_id = $3 RETURNING updated_at",
+    values: [position, todoId, listId],
+  };
+
+  let result;
+  try {
+    result = await pool.query(query);
+  } catch (e) {
+    console.error(e);
+    throw e;
+  }
+
+  if (result.rowCount === 1) {
+    console.log("result.rows>>", result.rows);
+    return result.rows[0].updated_at;
+  }
+
+  return undefined;
 };
 
 io.use(async (socket, next) => {
@@ -777,15 +858,69 @@ io.on("connection", async (socket) => {
         userId,
         position,
       });
+    }
+  );
 
-      // socket.emit("create_todo_result", {
-      //   listId,
-      //   results: result,
-      // });
+  socket.on(
+    "update_todo_description",
+    async ({
+      listId,
+      todoId,
+      description,
+    }: {
+      listId: string;
+      todoId: string;
+      description: string;
+    }) => {
+      // const { userId } = socket.request.payload;
+      await processor.addJob(listId, uuid(), "update_todo_description", {
+        todoId,
+        listId,
+        description,
+      });
+    }
+  );
 
-      // TODO: currently broadcasting to all clients, need to target specific client
-      // io.sockets.emit("create_todo_result", { results: result });
-      // io.emit("create_todo_result", );
+  socket.on(
+    "transition_todo_status",
+    async ({
+      listId,
+      todoId,
+      fromStatus,
+      toStatus,
+    }: {
+      listId: string;
+      todoId: string;
+      fromStatus: TODO_STATUS;
+      toStatus: TODO_STATUS;
+    }) => {
+      // const { userId } = socket.request.payload;
+      await processor.addJob(listId, uuid(), "transition_todo_status", {
+        todoId,
+        listId,
+        fromStatus,
+        toStatus,
+      });
+    }
+  );
+
+  socket.on(
+    "move_todo",
+    async ({
+      listId,
+      todoId,
+      position,
+    }: {
+      listId: string;
+      todoId: string;
+      position: string;
+    }) => {
+      // const { userId } = socket.request.payload;
+      await processor.addJob(listId, uuid(), "move_todo", {
+        todoId,
+        listId,
+        position,
+      });
     }
   );
 
@@ -806,32 +941,130 @@ io.on("connection", async (socket) => {
 
 const redisConnection = new Redis({ ...redisOpts, maxRetriesPerRequest: null });
 
+const isStatusTransitionValid = (
+  fromStatus: TODO_STATUS,
+  toStatus: TODO_STATUS
+): boolean => {
+  if (fromStatus === TODO_STATUS.Todo && toStatus === TODO_STATUS.OnGoing) {
+    return true;
+  }
+
+  if (
+    fromStatus === TODO_STATUS.OnGoing &&
+    (toStatus === TODO_STATUS.Todo || toStatus === TODO_STATUS.Done)
+  ) {
+    return true;
+  }
+
+  if (fromStatus === TODO_STATUS.Done && toStatus === TODO_STATUS.OnGoing) {
+    return true;
+  }
+
+  return false;
+};
+
 const handleJob = async (job: any) => {
   console.log("job: ", job.name, job.id, job.data);
 
-  const { todoId, listId, userId, description } = job.data;
+  switch (job.name) {
+    case "create_todo": {
+      const { todoId, listId, userId, description } = job.data;
 
-  let position = undefined; // job.data.position;
-  if (!position) {
-    const lastPosition = await dbTodoNextPosition(listId);
-    console.log("lastPosition>", lastPosition);
-    position = generateKeyBetween(lastPosition, undefined);
-    console.log("pos>", lastPosition, position);
+      let position = undefined; // job.data.position;
+      if (!position) {
+        const lastPosition = await dbTodoNextPosition(listId);
+        console.log("lastPosition>", lastPosition);
+        position = generateKeyBetween(lastPosition, undefined);
+        console.log("pos>", lastPosition, position);
+      }
+
+      const result = await dbCreateTodo(
+        todoId,
+        listId,
+        userId,
+        position,
+        description
+      );
+      console.log("create_todo_result: ", result);
+
+      io.to(getListRoomKey(listId)).emit("create_todo_result", {
+        listId,
+        results: result,
+      });
+
+      break;
+    }
+    case "update_todo_description": {
+      const { todoId, listId, description } = job.data;
+
+      const updatedAt = await dbTodoUpdateDescription(
+        todoId,
+        listId,
+        description
+      );
+      if (updatedAt) {
+        console.log("update_todo_description > success");
+        io.to(getListRoomKey(listId)).emit("update_todo_description_result", {
+          listId,
+          results: {
+            todo_id: todoId,
+            description,
+            updated_at: updatedAt,
+          },
+        });
+      }
+      break;
+    }
+    case "transition_todo_status": {
+      const { todoId, listId, fromStatus, toStatus } = job.data;
+
+      if (!isStatusTransitionValid(fromStatus, toStatus)) {
+        console.error("Invalid status transition:", fromStatus, toStatus);
+        return;
+      }
+
+      const updatedAt = await dbTodoTransitionStatus(
+        todoId,
+        listId,
+        fromStatus,
+        toStatus
+      );
+
+      if (updatedAt) {
+        console.log("transition_todo_status > success");
+        io.to(getListRoomKey(listId)).emit("transition_todo_status_result", {
+          listId,
+          results: {
+            todo_id: todoId,
+            status: toStatus,
+            updated_at: updatedAt,
+          },
+        });
+      }
+      break;
+    }
+    case "move_todo": {
+      const { todoId, listId, position } = job.data;
+
+      const updatedAt = await dbTodoUpdatePosition(todoId, listId, position);
+      if (updatedAt) {
+        console.log("move_todo > success");
+        io.to(getListRoomKey(listId)).emit("move_todo_result", {
+          listId,
+          results: {
+            todo_id: todoId,
+            position,
+            updated_at: updatedAt,
+          },
+        });
+      }
+
+      break;
+    }
+    default:
+      console.error("unknown job name: ", job.name);
+      break;
   }
-
-  const result = await dbCreateTodo(
-    todoId,
-    listId,
-    userId,
-    position,
-    description
-  );
-  console.log("create_todo_result: ", result);
-
-  io.to(getListRoomKey(listId)).emit("create_todo_result", {
-    listId,
-    results: result,
-  });
 };
 
 class Processor {

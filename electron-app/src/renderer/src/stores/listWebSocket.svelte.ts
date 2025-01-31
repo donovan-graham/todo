@@ -1,7 +1,11 @@
 import { io, Socket } from 'socket.io-client'
 import { v4 as uuid } from 'uuid'
 import { generateKeyBetween } from 'fractional-indexing'
-export const positionCompare = (a: string, b: string): number => {
+
+import { TODO_STATUS, TODO_POSITION_DIRECTION } from '../utils'
+import type { Todo } from '../utils'
+
+export const posixCompare = (a: string, b: string): number => {
   if (a < b) {
     return -1
   }
@@ -11,27 +15,18 @@ export const positionCompare = (a: string, b: string): number => {
   return 0
 }
 
-interface Todo {
-  id: string
-  list_id: string
-  position: string
-  description: string
-  status: number
-  created_at: string
-  created_by: string
-  updated_at: string
-}
-
 export class ListWebSocket {
   #socket: Socket | null = null
   port: number = 3000
 
   listId = $state('')
-  todos = $state<Todo[]>([])
+  lastTodoId = $state('')
+  #todos = $state<Todo[]>([])
 
-  listPosition = $derived.by(() => {
-    return this.todos.map((todo: any) => todo.position).sort(positionCompare)
+  sortedTodos = $derived.by(() => {
+    return [...this.#todos].sort((a, b) => posixCompare(a.position, b.position))
   })
+  count = $derived(this.#todos.length)
 
   isConnected = $state(false)
   isFetching = $state(false)
@@ -62,19 +57,53 @@ export class ListWebSocket {
     })
 
     this.#socket.on('fetch_list_result', (data) => {
-      // if (data.listId !== this.listId) {
-      //   return
-      // }
-      this.todos = data.results as Todo[]
+      if (data.listId !== this.listId) {
+        return
+      }
+      this.#todos = data.results as Todo[]
       this.isFetching = false
     })
 
     this.#socket.on('create_todo_result', (data) => {
-      // if (data.listId !== this.listId) {
-      //   return
-      // }
-      this.todos.push(data.results as Todo)
-      this.isFetching = false
+      if (data.listId !== this.listId) {
+        return
+      }
+      this.#todos.push(data.results as Todo)
+    })
+
+    this.#socket.on('update_todo_description_result', (data) => {
+      if (data.listId !== this.listId) {
+        return
+      }
+
+      const todo = this.#todos.find((todo) => todo.id === data.results.todo_id)
+      if (todo) {
+        todo.description = data.results.description
+        todo.updated_at = data.results.updated_at
+      }
+    })
+
+    this.#socket.on('transition_todo_status_result', (data) => {
+      if (data.listId !== this.listId) {
+        return
+      }
+
+      const todo = this.#todos.find((todo) => todo.id === data.results.todo_id)
+      if (todo) {
+        todo.status = data.results.status as TODO_STATUS
+        todo.updated_at = data.results.updated_at
+      }
+    })
+    this.#socket.on('move_todo_result', (data) => {
+      if (data.listId !== this.listId) {
+        return
+      }
+
+      const todo = this.#todos.find((todo) => todo.id === data.results.todo_id)
+      if (todo) {
+        todo.position = data.results.position
+        todo.updated_at = data.results.updated_at
+      }
     })
 
     this.#socket.on('connect_error', (error) => {
@@ -108,15 +137,75 @@ export class ListWebSocket {
   }
 
   createTodo = () => {
-    const lastPos = this.listPosition[this.listPosition.length - 1]
+    const todoId = uuid()
+    this.lastTodoId = todoId
+
+    const lastPos = this.sortedTodos[this.sortedTodos.length - 1]?.position
     const position = generateKeyBetween(lastPos, undefined)
 
     const payload = {
       listId: this.listId,
-      todoId: uuid(),
+      todoId,
       position
     }
     this.#socket?.emit('create_todo', payload)
+  }
+
+  updateTodoDescription = (todoId: string, description: string) => {
+    const payload = {
+      listId: this.listId,
+      todoId,
+      description
+    }
+    this.#socket?.emit('update_todo_description', payload)
+  }
+
+  moveTodo = (todoId: string, direction: TODO_POSITION_DIRECTION) => {
+    this.lastTodoId = todoId
+
+    const todoIndex = this.sortedTodos.findIndex((todo) => todo.id === todoId)
+    if (todoIndex === -1) {
+      return
+    }
+
+    let startPos: string
+    let endPos: string
+
+    if (direction === TODO_POSITION_DIRECTION.Up) {
+      startPos = this.sortedTodos[todoIndex - 2]?.position
+      endPos = this.sortedTodos[todoIndex - 1]?.position
+    } else {
+      startPos = this.sortedTodos[todoIndex + 1]?.position
+      endPos = this.sortedTodos[todoIndex + 2]?.position
+    }
+
+    if (startPos === undefined && endPos === undefined) {
+      return
+    }
+
+    const position = generateKeyBetween(startPos, endPos)
+    if (!position) {
+      return
+    }
+
+    const payload = {
+      listId: this.listId,
+      todoId,
+      position
+    }
+    this.#socket?.emit('move_todo', payload)
+  }
+
+  transitionTodoStatus = (todoId: string, fromStatus: TODO_STATUS, toStatus: TODO_STATUS) => {
+    this.lastTodoId = todoId
+
+    const payload = {
+      listId: this.listId,
+      todoId,
+      fromStatus,
+      toStatus
+    }
+    this.#socket?.emit('transition_todo_status', payload)
   }
 
   fetchList = () => {
