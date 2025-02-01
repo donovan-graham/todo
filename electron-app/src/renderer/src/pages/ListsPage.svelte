@@ -52,9 +52,9 @@
   <div>Total: {lists.length}</div>
   <br />
   <br />
-  <div class="list">
+  <div class="list" role="list">
     {#each lists as list, index (list.id)}
-      <div class="list-item">
+      <div class="list-item" role="listitem">
         <div class="list-name">
           <span class="list-index">{index +1}.</span> <Link to="/lists/{list.id}" state={list}>{list.name || 'Untitled'}</Link>
         </div>

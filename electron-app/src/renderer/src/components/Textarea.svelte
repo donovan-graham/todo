@@ -52,6 +52,7 @@
 <div onmouseenter={handleEnter} onmouseleave={handleExit}>
   {#if isHovering || isEditing}
     <div
+      tabindex="0"
       class="shadow"
       role="textbox"
       contenteditable="true"
@@ -60,7 +61,7 @@
       onkeydown={handleKeyDown}
     >{value}</div>
   {:else}
-    <div role="textbox" contenteditable="true" class="original"  bind:textContent={value}></div>
+    <div tabindex="0" role="textbox" contenteditable="true" class="original"  bind:textContent={value}></div>
   {/if}
 </div>
 
