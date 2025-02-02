@@ -23,7 +23,7 @@
     schema,
     onSubmit: async (data) => {
       const body = JSON.stringify({ username: data.username, password: data.password })
-      const url = 'http://localhost:3000/api/v1/users'
+      const url = 'http://localhost:3000/api/v1/register'
       try {
         const response = await fetch(url, {
           method: 'POST',
