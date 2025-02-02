@@ -1,7 +1,9 @@
 {
   "name": "server",
   "version": "1.0.0",
-  "main": "index.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "jest",
     "dev2": "tsx src/index.ts",
