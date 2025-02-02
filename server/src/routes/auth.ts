@@ -1,16 +1,10 @@
 import { Router, Request, Response } from "express";
-import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { z } from "zod";
 import { SchemaValidationError, UserAlreadyExistsError, UserAuthenticationError } from "../errors/errors";
 import { createNewUser, fetchUserByUsername } from "../db/queries";
-import { TokenPayload } from "../types";
 import { StatusCodes } from "http-status-codes";
-
-const createAuthToken = (payload: TokenPayload) =>
-  jwt.sign(payload, "JWT_SECRET_KEY", {
-    expiresIn: 24 * 60 * 60, // 1 day
-  });
+import { createAuthToken } from "../utils/auth";
 
 const postLoginApiBodySchema = z.object({
   username: z.string().trim().min(3).max(255),
@@ -47,7 +41,7 @@ const postRegisterApiBodySchema = z.object({
   password: z.string().trim().min(3).max(255),
 });
 
-export const registerHandler = async (req: Request, res: Response) => {
+const registerHandler = async (req: Request, res: Response) => {
   const { success, error: schemaError, data: safeBody } = postRegisterApiBodySchema.safeParse(req.body);
   if (!success) {
     throw new SchemaValidationError(schemaError?.message);

@@ -165,6 +165,22 @@ export interface DbTodo {
   updated_at: string;
 }
 
+export const fetchTodosByListId = async (listId: string): DbResult<DbTodo[]> => {
+  const query = {
+    text: "SELECT * FROM todos WHERE list_id = $1",
+    values: [listId],
+  };
+
+  let result;
+  try {
+    result = await pool.query(query);
+  } catch (e) {
+    return [e as Error, null];
+  }
+
+  return [null, result.rows];
+};
+
 export const createNewTodo = async (todoId: string, listId: string, userId: string, position: string, description: string = "New todo"): DbResult<DbTodo> => {
   const query = {
     text: "INSERT INTO todos(id, list_id, created_by, position, description) VALUES ($1, $2, $3, $4, $5) RETURNING *",

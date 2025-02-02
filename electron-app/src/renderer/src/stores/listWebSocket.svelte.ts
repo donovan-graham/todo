@@ -56,7 +56,7 @@ export class ListWebSocket {
       this.fetchList()
     })
 
-    this.#socket.on('fetch_list_result', (data) => {
+    this.#socket.on('fetch_todos_result', (data) => {
       if (data.listId !== this.listId) {
         return
       }
@@ -210,7 +210,7 @@ export class ListWebSocket {
 
   fetchList = () => {
     this.isFetching = true
-    this.#socket?.emit('fetch_list', { listId: this.listId })
+    this.#socket?.emit('fetch_todos', { listId: this.listId })
   }
 
   disconnect = () => {
