@@ -41,11 +41,11 @@ npm run dev
 ```
 
 3. Client:
-   The client is an elctron, vite, svelte based workflow. It communicates with the server using both a stateless api and websockets.
+   The client is an electron, vite, svelte based workflow. It communicates with the server using both a stateless api and websockets.
 
 ```
 # in the repo root directory
-cd server
+cd electron-app
 
 # install dependencies
 npm i
@@ -60,6 +60,9 @@ npm run dev
 npm run build:mac
 npm run build:win
 npm run build:linux
+
+# to open an OS version of the built app
+open dist/mac-arm64/todo-app.app
 ```
 
 ### Requirements

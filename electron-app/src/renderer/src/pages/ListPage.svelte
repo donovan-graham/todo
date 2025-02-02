@@ -199,18 +199,6 @@
     align-items: left;
     gap: 1rem;
   }
-  .list-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .list-name {
-    display: flex;
-    gap: 0.5rem;
-    font-size: 1.5rem;
-    align-items: center;
-  }
   .list-index {
     font-size: 1rem;
     color: 818690;

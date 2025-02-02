@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "jest",
     "dev2": "tsx src/index.ts",
     "dev": "tsx watch --clear-screen=false src/index.ts",
     "dev:debug": "tsx --inspect-brk --clear-screen=false src/index.ts",
