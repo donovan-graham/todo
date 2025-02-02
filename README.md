@@ -32,8 +32,11 @@ cd server
 # install dependencies
 npm i
 
-# run service
 # note: please ensure docker services (postgres and redis) are running
+# run migrations (only needed once)
+npm run migrate up
+
+# run service
 npm run dev
 ```
 
