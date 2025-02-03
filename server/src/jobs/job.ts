@@ -71,7 +71,7 @@ export interface TransitionTodoStatusJob {
 
 export const transitionTodoStatusJob = async (io: SocketIOServer, { todoId, listId, fromStatus, toStatus }: TransitionTodoStatusJob) => {
   if (!isStatusTransitionValid(fromStatus, toStatus)) {
-    console.error(`Invalid status transition from ${fromStatus} to ${toStatus} for todo ${todoId}`);
+    console.error(`Invalid status transition from "${fromStatus}" to "${toStatus}" for todo:${todoId}`);
     return;
   }
 
